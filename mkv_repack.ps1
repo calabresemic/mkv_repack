@@ -41,7 +41,8 @@ foreach($file in $files){
     
 
     #Declare variables used for commandline
-    $newFileName = $file.FullName + '.temp'
+    $newFileName = Join-Path $file.DirectoryName $($file.BaseName + '(MKV_REPACK).mkv')
+    #$newFileName = $file.FullName + '.temp'
     $sourceFile = $file.FullName
     $cmd = "$mkvMerge_exe -o `"$newFileName`""
     
