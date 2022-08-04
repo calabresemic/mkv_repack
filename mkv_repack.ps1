@@ -90,6 +90,7 @@ Function Language-Repack {
 
         }
 
+        [double]$totalSizeChanged = 0
         $resultsJSON = [pscustomObject]@{
             Date = Get-Date
             Operation = $outputType
@@ -186,6 +187,8 @@ Function Language-Repack {
 
             #Calculate New File Size
             $newFileSize = [string]::Format("{0:0.00} MB",(Get-Item -LiteralPath $sourceFile).Length/1MB)
+            $sizeChanged = [double]$newFileSize.Replace(' MB','') - [double]$originalFileSize.Replace(' MB','')
+            $totalSizeChanged += $sizeChanged
 
             $resultEntry = [pscustomobject]@{
                 FileName = $file.Name
@@ -194,12 +197,14 @@ Function Language-Repack {
                 NewFileSize = $newFileSize
                 AudioTracksRemoved = $removedAudioTracks
                 SubtitleTracksRemoved = $removedSubtitleTracks
-                SizeChange = [string]([double]$newFileSize.Replace(' MB','') - [double]$originalFileSize.Replace(' MB','')) + ' MB'
+                SizeChange = [string]$sizeChanged + ' MB'
             }
 
             $resultsJSON.Results += $resultEntry
         }
 
+        Write-Host "Operation resulted in a net of $totalSizeChanged MBs"
+        Write-Host "Saving results file"
         $resultsJSON | ConvertTo-Json | Out-File "$backupPath\mkv_repack_results.json" -Force
     }
 }
