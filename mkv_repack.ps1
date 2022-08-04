@@ -50,6 +50,13 @@ foreach($file in $files){
     if($audioToCopy.Count -gt 0){
         $cmd += " -a $($audioToCopy.id -join ',')"
     }
+    
+    #If there are multiple audio tracks in english pick the "best" one
+    #Best in this case means most channels since Dolby should be at least 5.1(6) and AC-3 is 2
+    if($audioToCopy.Count -gt 1){
+        $cmd += " --default-track-flag $(($audioToCopy | Sort-Object {$_.properties.audio_channels} -Descending | Select-Object -First 1).id):true"
+        $cmd += " -a $($audioToCopy.id -join ',')"
+    }
 
     #Check for english subtitle to keep or declare keeping none
     if($subtitleToCopy.Count -gt 0){
