@@ -186,7 +186,7 @@ Function Language-Repack {
             cmd /c $cmd
 
             #Calculate New File Size
-            $newFileSize = [string]::Format("{0:0.00} MB",(Get-Item -LiteralPath $sourceFile).Length/1MB)
+            $newFileSize = [string]::Format("{0:0.00} MB",(Get-Item -LiteralPath $newFileName).Length/1MB)
             $sizeChanged = [double]$newFileSize.Replace(' MB','') - [double]$originalFileSize.Replace(' MB','')
             $totalSizeChanged += $sizeChanged
 
