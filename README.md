@@ -16,6 +16,7 @@ Three available modes:
     Backup the original file to a specified directory and then replace the file in the original location with the processed file.
     
 Future Plans:
+  - Storage of results in a usable format. Maybe JSON, just to know how the file was processed and reduced in size(data hoarder things).
   - GUI for selecting video files to process.
   - Better handling of foreign films.
   - Better handling of default audio tracks.
