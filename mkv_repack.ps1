@@ -1,22 +1,34 @@
 Function Language-Repack {
 
+    [CmdletBinding()]
     Param (
         [ValidateSet('Copy','Replace','Recon')]
         [string]$outputType,
 
-        [string]$path = $pwd.path,
+        [string]$path,
 
         [string]$backupPath = "$path\backup",
 
         [string]$mkvMergePath = 'F:\mkvtoolnix\mkvmerge.exe',
 
-        [switch]$noSubs
+        [switch]$NoSubs
     )
 
-    #Check for executable
-    if(!(test-path $mkvMergePath)){
-        Write-Warning "Unable to locate mkvmerge.exe!"
+    #Validate executable
+    try{  $mkvVersion = & $mkvMergePath --version  }
+    catch{  $mkvVersion = $null  }
+
+    if($mkvVersion -notlike 'mkvmerge*'){
+        
+        #This isn't a valid mkvmerge binary
+        Write-Warning "Unable to validate mkvmerge.exe! Halting."
         Continue
+
+    } else {
+        
+        #Valid binary show version if running verbose
+        Write-Verbose "$mkvVersion"
+
     }
 
     #Search for files
@@ -25,14 +37,15 @@ Function Language-Repack {
 
     #Check for applicable files
     if ($files.Count -lt 1) {
-        Write-Warning "No .mkv files found!"
+
+        Write-Warning "No .mkv files found! Halting."
         Continue
+
     }
 
     #There are files to process if we've made it this far
     Write-Host "$($files.count) .mkv files found!"
     Write-Host ""
-    
 
     if($outputType -eq 'Recon'){
 
@@ -58,7 +71,7 @@ Function Language-Repack {
                 #Foreign film, ignore audio tracks.
                 if($unwantedSubtitleTracks.Count -gt 0) {
                     $badFiles ++
-                    Write-Host "$($file.Name) has 0 unwanted audio track(s) and $($unwantedSubtitleTracks.Count) unwanted subtitle track(s)."
+                    Write-Host "$($file.Name) has no English audio tracks and $($unwantedSubtitleTracks.Count) unwanted subtitle track(s)."
                 }
 
             } else {
@@ -87,16 +100,20 @@ Function Language-Repack {
             }
 
             Write-Host "Original files will be backed up to $backupPath"
+            Write-Host ""
 
+        }
+
+        #Initialize the JSON output
+        $resultsJSON = [pscustomObject]@{
+            Date = (Get-Date).ToString()
+            Operation = $outputType
+            Path = $path
+            TotalSizeChanged = [string]0
+            Results = @()
         }
 
         [double]$totalSizeChanged = 0
-        $resultsJSON = [pscustomObject]@{
-            Date = Get-Date
-            Operation = $outputType
-            Path = $path
-            Results = @()
-        }
 
         #Loop through and process files
         foreach($file in $files){
@@ -115,7 +132,7 @@ Function Language-Repack {
             if($unwantedAudioTracks.Count -eq 0 -and $unwantedSubtitleTracks.Count -eq 0) {
 
                 Write-Host "$($file.Name) does not need to be processed. Skipping."
-                continue
+                Continue
 
             } else {
 
@@ -123,6 +140,7 @@ Function Language-Repack {
 
                 #Calculate Original File Size
                 $originalFileSize = [string]::Format("{0:0.00} MB",$file.Length/1MB)
+                Write-Verbose "Original File Size: $originalFileSize"
 
                 if($outputType -eq 'Replace'){
 
@@ -149,13 +167,15 @@ Function Language-Repack {
             #If no english tracks exist (foreign film) this will just not add the -a param and will default to copying all.
             if($audioToCopy.Count -gt 0){
                 
+                [array]$removedAudioTracks = $unwantedAudioTracks | Select-Object codec,id,@{N='Track Name';E={$_.properties.track_name}},@{N='Language';E={$_.properties.language}},@{N='Default Track';E={$_.properties.default_track}}
+                Write-Verbose "Removing $($removedAudioTracks.Count) audio tracks."
                 $cmd += " -a $($audioToCopy.id -join ',')"
-                [array]$removedAudioTracks = $unwantedAudioTracks
 
             } else {
                 
                 #Foreign Film, adjust the output for results
-                $removedAudioTracks = @()
+                $removedAudioTracks = 'N/A'
+                Write-Verbose "Not removing any audio tracks."
 
             }
 
@@ -163,31 +183,39 @@ Function Language-Repack {
             #Best in this case means most channels since Dolby should be at least 6 and AC-3 is 2
             #I have discovered that this sometimes only works by accident between multiple 6 channel tracks. Oh well. They'll both sound good I guess...
             if($audioToCopy.Count -gt 1){
-                $cmd += " --default-track-flag $(($audioToCopy | Sort-Object {$_.properties.audio_channels} -Descending | Select-Object -First 1).id):true"
+
+                $defaultTrack = $audioToCopy | Sort-Object {$_.properties.audio_channels} -Descending | Select-Object -First 1
+                Write-Verbose "Setting default audio track to: $($defaultTrack.properties.track_name)"
+                $cmd += " --default-track-flag $($defaultTrack.id):true"
+                
             }
 
             #Check for english subtitle to keep or remove all
             if($subtitleToCopy.Count -eq 0 -or $noSubs){
 
                 $cmd += ' -S'
-                [array]$removedSubtitleTracks = $subtitleTracks
 
             } else {
 
                 $cmd += " -s $($subtitleToCopy.id -join ',')"
-                [array]$removedSubtitleTracks = $unwantedSubtitleTracks
             
             }
+
+            [array]$removedSubtitleTracks = $subtitleTracks | Select-Object codec,id,@{N='Track Name';E={$_.properties.track_name}},@{N='Language';E={$_.properties.language}}
+            Write-Verbose "Removing $($removedSubtitleTracks.Count) subtitle tracks."
 
             #Append source file
             $cmd += " `"$sourceFile`""
 
             #Send commands to commandline
+            Write-Verbose "$cmd"
             cmd /c $cmd
 
             #Calculate New File Size
             $newFileSize = [string]::Format("{0:0.00} MB",(Get-Item -LiteralPath $newFileName).Length/1MB)
+            Write-Verbose "New File Size: $newFileSize"
             $sizeChanged = [double]$newFileSize.Replace(' MB','') - [double]$originalFileSize.Replace(' MB','')
+            Write-Verbose "Size changed: $([string]::Format("{0:0.00} MB",$sizeChanged))"
             $totalSizeChanged += $sizeChanged
 
             $resultEntry = [pscustomobject]@{
@@ -203,8 +231,13 @@ Function Language-Repack {
             $resultsJSON.Results += $resultEntry
         }
 
-        Write-Host "Operation resulted in a net of $totalSizeChanged MBs"
+        #Update total size changed result in JSON
+        $totalSizeChangedString = [string]::Format("{0:0.00} MB",$totalSizeChanged)
+        $resultsJSON.TotalSizeChanged = $totalSizeChangedString
+
+        Write-Verbose "Operation resulted in a net of $totalSizeChangedString"
         Write-Host "Saving results file"
+
         $resultsJSON | ConvertTo-Json | Out-File "$backupPath\mkv_repack_results.json" -Force
     }
 }
