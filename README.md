@@ -1,5 +1,5 @@
 # mkv_repack
-Tool used to repack .mkv files with only English audio and subtitle tracks.
+Tool used to repack .mkv files with only English audio and subtitle tracks. Based off a script I found written in Python 2.7 and didn't have the abilty to fix at the time. This has gotten a little out of hand.
 
 Three available modes:
 
